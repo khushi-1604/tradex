@@ -1,0 +1,425 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinBuddy Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      background-color: #f4f6f8;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .card {
+      border-radius: 16px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      margin-bottom: 24px;
+    }
+    .chart-container {
+      position: relative;
+      height: 400px;
+    }
+    .btn-group .btn.active {
+      background-color: #0d6efd;
+      color: white;
+    }
+    .protimeter {
+      font-weight: bold;
+      padding: 1rem;
+      border-radius: 8px;
+      text-align: center;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+<div class="container py-4">
+  <h2 class="mb-4 text-center">📈 FinBuddy - Stock Analyzer</h2>
+
+  <!-- Company Selector -->
+  <div class="mb-3">
+    <label for="companySelect" class="form-label">Select a Company</label>
+    <select class="form-select" id="companySelect">
+      <option value="" disabled selected>Select a company</option>
+
+    </select>
+  </div>
+
+  <!-- Graph Card -->
+  <div class="card p-4">
+    <div class="d-flex justify-content-between align-items-center">
+      <h5>Stock Price Chart</h5>
+      <div class="btn-group" role="group">
+        <button class="btn btn-outline-primary time-btn" data-range="1d">1D</button>
+        <button class="btn btn-outline-primary time-btn" data-range="1w">1W</button>
+        <button class="btn btn-outline-primary time-btn" data-range="1m">1M</button>
+        <button class="btn btn-outline-primary time-btn" data-range="1y">1Y</button>
+        <button class="btn btn-outline-primary time-btn" data-range="2y">2Y</button>
+      </div>
+    </div>
+    <div class="chart-container mt-3">
+      <canvas id="stockChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Financial Data -->
+  <div class="card p-4">
+    <h5>Financial Overview</h5>
+    <div class="btn-group mb-2">
+      <button class="btn btn-outline-success finance-btn" data-type="annual">Annual</button>
+      <button class="btn btn-outline-success finance-btn" data-type="quarterly">Quarterly</button>
+    </div>
+    <canvas id="financeChart"></canvas>
+  </div>
+
+  <!-- RSI/MACD/Volume Table -->
+  <div class="card p-4">
+   <h5>Technical Indicators</h5>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>RSI</th>
+      <th>MACD</th>
+      <th>Signal Line</th>
+      <th>Volume</th>
+    </tr>
+  </thead>
+  <tbody id="indicatorsTable"></tbody>
+</table>
+
+  </div>
+
+  <!-- Protimeter -->
+  <div class="card">
+    <div id="protimeter" class="protimeter bg-secondary">Loading sentiment...</div>
+  </div>
+</div>
+
+
+
+<script>
+const stockChartCtx = document.getElementById('stockChart').getContext('2d');
+const financeChartCtx = document.getElementById('financeChart').getContext('2d');
+let stockChart, financeChart;
+
+const renderChart = (labels, data) => {
+  if (stockChart) stockChart.destroy();
+  stockChart = new Chart(stockChartCtx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Close Price',
+        data,
+        borderColor: 'blue',
+        tension: 0.3,
+        fill: false
+      }]
+    }
+  });
+};
+
+const renderFinance = (labels, revenue, profit) => {
+  if (financeChart) financeChart.destroy();
+  financeChart = new Chart(financeChartCtx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Revenue', data: revenue, backgroundColor: 'green' },
+        { label: 'Net Profit', data: profit, backgroundColor: 'orange' }
+      ]
+    },
+    options: { responsive: true }
+  });
+};
+
+const fetchData = (company, range = '1m', financeType = 'annual') => {
+  if (!company || company === "Choose...") {
+    alert("Please select a valid company");
+    return;
+  }
+
+  fetch('/api/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      company: company,
+      range: range,
+      finance: financeType
+    })
+  })
+  .then(res => {
+    if (!res.ok) throw new Error("Network response was not ok");
+    return res.json();
+  })
+  .then(data => {
+    console.log("✅ Received data:", data);
+     console.log("Received indicators:", data.indicators); // just indicators
+
+
+    // Stock chart
+    if (data.graph && data.graph.dates && data.graph.close) {
+      renderChart(data.graph.dates, data.graph.close);
+    } else {
+      console.warn("⚠️ Missing graph data");
+    }
+
+    // Financial chart
+    if (data.financial && data.financial.labels && data.financial.revenue && data.financial.profit) {
+      renderFinance(data.financial.labels, data.financial.revenue, data.financial.profit);
+    } else {
+      console.warn("⚠️ Missing financial data");
+    }
+
+    // Indicators table
+    if (data.indicators) {
+     const { RSI = '-', MACD = '-', Signal = '-', Volume = '-' } = data.indicators;
+document.getElementById('indicatorsTable').innerHTML = `
+  <tr>
+    <td>${RSI}</td>
+    <td>${MACD}</td>
+    <td>${Signal}</td>
+    <td>${Volume}</td>
+  </tr>
+`;
+    } else {
+      console.warn("⚠️ Missing indicators");
+    }
+
+    // Protimeter
+    const meter = document.getElementById('protimeter');
+    if (data.protimeter) {
+      const sentiment = data.protimeter.toLowerCase();
+      meter.textContent = `Sentiment: ${data.protimeter}`;
+      meter.className = `protimeter bg-${sentiment === 'bullish' ? 'success' : sentiment === 'bearish' ? 'danger' : 'warning'}`;
+    } else {
+      meter.textContent = 'Sentiment: N/A';
+      meter.className = 'protimeter bg-secondary';
+    }
+  })
+  .catch(error => {
+    console.error('❌ Error fetching data:', error);
+    alert("Unable to fetch data. Please try again later.");
+  });
+};
+
+// Load companies dropdown
+fetch('/api/companies')
+  .then(res => res.json())
+  .then(companies => {
+    const select = document.getElementById('companySelect');
+    companies.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.symbol;
+      opt.textContent = `${c.name} (${c.symbol})`;
+      select.appendChild(opt);
+    });
+  });
+
+document.getElementById('companySelect').addEventListener('change', e => {
+  const selectedOption = e.target.selectedOptions[0];
+  const companyName = selectedOption.textContent.split(' (')[0]; // Send "Infosys"
+  fetchData(companyName);
+});
+
+document.querySelectorAll('.time-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const range = btn.getAttribute('data-range');
+    const company = document.getElementById('companySelect').value;
+    if (company) fetchData(company, range);
+  });
+});
+
+document.querySelectorAll('.finance-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.finance-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const financeType = btn.getAttribute('data-type');
+    const company = document.getElementById('companySelect').value;
+    if (company) fetchData(company, undefined, financeType);
+  });
+});
+</script>
+
+<!-- 
+<script>
+const stockChartCtx = document.getElementById('stockChart').getContext('2d');
+const financeChartCtx = document.getElementById('financeChart').getContext('2d');
+let stockChart, financeChart;
+
+const renderChart = (labels, data) => {
+  if (stockChart) stockChart.destroy();
+  stockChart = new Chart(stockChartCtx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Close Price',
+        data,
+        borderColor: 'blue',
+        tension: 0.3,
+        fill: false
+      }]
+    }
+  });
+};
+
+const renderFinance = (labels, revenue, profit) => {
+  if (financeChart) financeChart.destroy();
+  financeChart = new Chart(financeChartCtx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Revenue', data: revenue, backgroundColor: 'green' },
+        { label: 'Net Profit', data: profit, backgroundColor: 'orange' }
+      ]
+    },
+    options: { responsive: true }
+  });
+};
+
+const updateIndicatorsTable = (indicators) => {
+  const table = document.getElementById('indicatorsTable');
+  if (!indicators || Object.keys(indicators).length === 0) {
+    table.innerHTML = `<tr><td colspan="4">No indicator data available</td></tr>`;
+    return;
+  }
+
+  const { RSI = '-', MACD = '-', Signal = '-', Volume = '-' } = indicators;
+  table.innerHTML = `
+    <thead>
+      <tr><th>RSI</th><th>MACD</th><th>Signal</th><th>Volume</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>${RSI}</td><td>${MACD}</td><td>${Signal}</td><td>${Volume}</td></tr>
+    </tbody>
+  `;
+};
+
+const updateProtimeter = (sentiment) => {
+  const meter = document.getElementById('protimeter');
+  if (!sentiment) {
+    meter.textContent = 'Sentiment: N/A';
+    meter.className = 'protimeter bg-secondary';
+    return;
+  }
+
+  const value = sentiment.toLowerCase();
+  meter.textContent = `Sentiment: ${sentiment}`;
+  meter.className = `protimeter bg-${value === 'bullish' ? 'success' : value === 'bearish' ? 'danger' : 'warning'}`;
+};
+
+const fetchData = (company, range = '1m', financeType = 'annual') => {
+  if (!company || company === "Choose...") {
+    alert("Please select a valid company");
+    return;
+  }
+
+  fetch('/api/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ company, range, finance: financeType })
+  })
+    .then(res => {
+      if (!res.ok) throw new Error("Network error");
+      return res.json();
+    })
+    .then(data => {
+      console.log("✅ Received data:", data);
+
+      // Render Graph
+      if (data.graph && data.graph.dates && data.graph.close) {
+        renderChart(data.graph.dates, data.graph.close);
+      }
+
+      // Render Financials
+      if (data.financial && data.financial.labels && data.financial.revenue && data.financial.profit) {
+        renderFinance(data.financial.labels, data.financial.revenue, data.financial.profit);
+      }
+
+      // Render Indicators
+      updateIndicatorsTable(data.indicators);
+
+      // Update Protimeter
+      updateProtimeter(data.protimeter);
+    })
+    .catch(err => {
+      console.error("❌ Error fetching data:", err);
+      alert("Failed to fetch data. Please try again later.");
+    });
+};
+
+// Load company options
+fetch('/api/companies')
+  .then(res => res.json())
+  .then(companies => {
+    const select = document.getElementById('companySelect');
+    companies.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.symbol;
+      opt.textContent = `${c.name} (${c.symbol})`;
+      select.appendChild(opt);
+    });
+  });
+
+// Event: Company change
+document.getElementById('companySelect').addEventListener('change', e => {
+  const selectedText = e.target.selectedOptions[0].textContent;
+  const companyName = selectedText.split(' (')[0]; // eg: Infosys
+  fetchData(companyName);
+});
+
+// Event: Time range change
+document.querySelectorAll('.time-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const range = btn.getAttribute('data-range');
+    const company = document.getElementById('companySelect').value;
+    if (company) fetchData(company, range);
+  });
+});
+
+// Event: Finance type change
+document.querySelectorAll('.finance-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.finance-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const financeType = btn.getAttribute('data-type');
+    const company = document.getElementById('companySelect').value;
+    if (company) fetchData(company, undefined, financeType);
+  });
+});
+</script> -->
+
+</body>
+</html>
