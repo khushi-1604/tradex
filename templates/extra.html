@@ -1,425 +1,279 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FinBuddy Dashboard</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Signals Chart</title>
+<!-- Plotly.js for charting -->
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<!-- PapaParse for CSV parsing -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<!-- Tailwind CSS for styling -->
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    /* Custom styles for the body and font */
     body {
-      background-color: #f4f6f8;
-      font-family: 'Segoe UI', sans-serif;
+        font-family: 'Inter', sans-serif;
     }
-    .card {
-      border-radius: 16px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      margin-bottom: 24px;
-    }
-    .chart-container {
-      position: relative;
-      height: 400px;
-    }
-    .btn-group .btn.active {
-      background-color: #0d6efd;
-      color: white;
-    }
-    .protimeter {
-      font-weight: bold;
-      padding: 1rem;
-      border-radius: 8px;
-      text-align: center;
-      color: white;
-    }
-  </style>
+</style>
 </head>
-<body>
-<div class="container py-4">
-  <h2 class="mb-4 text-center">📈 FinBuddy - Stock Analyzer</h2>
+<body class="bg-gray-100 p-4">
 
-  <!-- Company Selector -->
-  <div class="mb-3">
-    <label for="companySelect" class="form-label">Select a Company</label>
-    <select class="form-select" id="companySelect">
-      <option value="" disabled selected>Select a company</option>
+<div class="container mx-auto p-6 bg-white rounded-xl shadow-lg">
+    <h2 class="text-4xl font-extrabold text-center text-gray-800 mb-8">📊 Stock Signals Chart</h2>
+    <p class="text-center text-gray-600 mb-4">
+        Upload your CSV file to display stock close prices, moving averages (MA20, MA30), and buy/sell signals.
+        A second chart will visualize the generated trading signal over time.
+    </p>
 
-    </select>
-  </div>
-
-  <!-- Graph Card -->
-  <div class="card p-4">
-    <div class="d-flex justify-content-between align-items-center">
-      <h5>Stock Price Chart</h5>
-      <div class="btn-group" role="group">
-        <button class="btn btn-outline-primary time-btn" data-range="1d">1D</button>
-        <button class="btn btn-outline-primary time-btn" data-range="1w">1W</button>
-        <button class="btn btn-outline-primary time-btn" data-range="1m">1M</button>
-        <button class="btn btn-outline-primary time-btn" data-range="1y">1Y</button>
-        <button class="btn btn-outline-primary time-btn" data-range="2y">2Y</button>
-      </div>
+    <!-- File Input -->
+    <div class="flex justify-center mb-8">
+        <input type="file" id="fileInput" class="block w-full max-w-md text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-full file:border-0
+            file:text-sm file:font-semibold
+            file:bg-violet-50 file:text-violet-700
+            hover:file:bg-violet-100"/>
     </div>
-    <div class="chart-container mt-3">
-      <canvas id="stockChart"></canvas>
-    </div>
-  </div>
 
-  <!-- Financial Data -->
-  <div class="card p-4">
-    <h5>Financial Overview</h5>
-    <div class="btn-group mb-2">
-      <button class="btn btn-outline-success finance-btn" data-type="annual">Annual</button>
-      <button class="btn btn-outline-success finance-btn" data-type="quarterly">Quarterly</button>
-    </div>
-    <canvas id="financeChart"></canvas>
-  </div>
+    <!-- First Chart Container: Price, MAs, and Buy/Sell Signals -->
+    <div id="chart1" class="w-full h-[600px] mb-10 rounded-lg shadow-xl border border-gray-200"></div>
 
-  <!-- RSI/MACD/Volume Table -->
-  <div class="card p-4">
-   <h5>Technical Indicators</h5>
-<table class="table table-striped">
-  <thead>
-    <tr>
-      <th>RSI</th>
-      <th>MACD</th>
-      <th>Signal Line</th>
-      <th>Volume</th>
-    </tr>
-  </thead>
-  <tbody id="indicatorsTable"></tbody>
-</table>
-
-  </div>
-
-  <!-- Protimeter -->
-  <div class="card">
-    <div id="protimeter" class="protimeter bg-secondary">Loading sentiment...</div>
-  </div>
+    <!-- Second Chart Container: Signal Indicator -->
+    <div id="chart2" class="w-full h-[400px] rounded-lg shadow-xl border border-gray-200"></div>
 </div>
 
-
-
 <script>
-const stockChartCtx = document.getElementById('stockChart').getContext('2d');
-const financeChartCtx = document.getElementById('financeChart').getContext('2d');
-let stockChart, financeChart;
-
-const renderChart = (labels, data) => {
-  if (stockChart) stockChart.destroy();
-  stockChart = new Chart(stockChartCtx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Close Price',
-        data,
-        borderColor: 'blue',
-        tension: 0.3,
-        fill: false
-      }]
+// Moving Average helper function
+/**
+ * Calculates the simple moving average for a given array.
+ * @param {Array<number>} arr - The array of numbers to calculate the moving average for.
+ * @param {number} window - The size of the moving average window.
+ * @returns {Array<number|null>} An array containing the moving averages, with nulls for initial values.
+ */
+function movingAverage(arr, window) {
+    const result = [];
+    for (let i = 0; i < arr.length; i++) {
+        if (i < window - 1) {
+            // Not enough data points yet for the window
+            result.push(null);
+        } else {
+            // Calculate the average for the current window
+            const slice = arr.slice(i - window + 1, i + 1);
+            const avg = slice.reduce((sum, val) => sum + val, 0) / window;
+            result.push(avg);
+        }
     }
-  });
-};
+    return result;
+}
 
-const renderFinance = (labels, revenue, profit) => {
-  if (financeChart) financeChart.destroy();
-  financeChart = new Chart(financeChartCtx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Revenue', data: revenue, backgroundColor: 'green' },
-        { label: 'Net Profit', data: profit, backgroundColor: 'orange' }
-      ]
-    },
-    options: { responsive: true }
-  });
-};
+// Function to process data and plot charts
+/**
+ * Processes the CSV data and plots two stock charts.
+ * @param {string} csvString - The CSV data as a string.
+ */
+function plotStockCharts(csvString) {
+    // Parse the CSV data using PapaParse
+    Papa.parse(csvString, {
+        header: false, // Data does not have a header row (we will skip the first row manually)
+        complete: function(results) {
+            const data = results.data;
+            const dates = [];
+            const close = [];
 
-const fetchData = (company, range = '1m', financeType = 'annual') => {
-  if (!company || company === "Choose...") {
-    alert("Please select a valid company");
-    return;
-  }
+            // Iterate over each row to extract Date (column 0) and Close Price (column 4)
+            data.forEach(row => {
+                // Ensure row[0] exists before creating a Date object
+                if (row[0]) {
+                    // The date format is 'DD-MM-YYYY HH:MM:SS', so we need to parse it correctly.
+                    // Splitting by space and taking the date part, then splitting by '-' to reorder to 'YYYY-MM-DD' for Date constructor.
+                    const datePart = row[0].split(' ')[0];
+                    const [day, month, year] = datePart.split('-');
+                    dates.push(new Date(`${year}-${month}-${day}`));
+                }
+                // Ensure row[4] exists and is a valid number before parsing
+                if (row[4] && !isNaN(parseFloat(row[4]))) {
+                    close.push(parseFloat(row[4]));
+                }
+            });
 
-  fetch('/api/data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      company: company,
-      range: range,
-      finance: financeType
-    })
-  })
-  .then(res => {
-    if (!res.ok) throw new Error("Network response was not ok");
-    return res.json();
-  })
-  .then(data => {
-    console.log("✅ Received data:", data);
-     console.log("Received indicators:", data.indicators); // just indicators
+            // Calculate 20-day and 30-day Moving Averages
+            const ma20 = movingAverage(close, 20);
+            const ma30 = movingAverage(close, 30);
 
+            // Generate trading signals based on MA crossover
+            // signal: 1 for MA20 > MA30 (Buy), -1 for MA20 < MA30 (Sell), 0 for no clear signal/hold
+            const signal = [];
+            for (let i = 0; i < close.length; i++) {
+                if (ma20[i] === null || ma30[i] === null) {
+                    signal.push(0); // No signal if MAs are not yet calculated
+                } else if (ma20[i] > ma30[i]) {
+                    signal.push(1); // Buy signal
+                } else if (ma20[i] < ma30[i]) {
+                    signal.push(-1); // Sell signal
+                } else {
+                    signal.push(0); // Hold/Neutral
+                }
+            }
 
-    // Stock chart
-    if (data.graph && data.graph.dates && data.graph.close) {
-      renderChart(data.graph.dates, data.graph.close);
-    } else {
-      console.warn("⚠️ Missing graph data");
-    }
+            // Determine buy/sell positions (when signal changes)
+            // position: 1 for buy entry, -1 for sell entry, 0 otherwise
+            const position = [];
+            position.push(0); // No position on the first day
+            for (let i = 1; i < signal.length; i++) {
+                position.push(signal[i] - signal[i-1]);
+            }
 
-    // Financial chart
-    if (data.financial && data.financial.labels && data.financial.revenue && data.financial.profit) {
-      renderFinance(data.financial.labels, data.financial.revenue, data.financial.profit);
-    } else {
-      console.warn("⚠️ Missing financial data");
-    }
+            // Filter data points for buy and sell signals for plotting
+            const buyX = [], buyY = [], sellX = [], sellY = [];
+            for (let i = 0; i < position.length; i++) {
+                if (position[i] === 1) { // Buy signal (MA20 crosses above MA30)
+                    buyX.push(dates[i]);
+                    buyY.push(close[i]);
+                } else if (position[i] === -1) { // Sell signal (MA20 crosses below MA30)
+                    sellX.push(dates[i]);
+                    sellY.push(close[i]);
+                }
+            }
 
-    // Indicators table
-    if (data.indicators) {
-     const { RSI = '-', MACD = '-', Signal = '-', Volume = '-' } = data.indicators;
-document.getElementById('indicatorsTable').innerHTML = `
-  <tr>
-    <td>${RSI}</td>
-    <td>${MACD}</td>
-    <td>${Signal}</td>
-    <td>${Volume}</td>
-  </tr>
-`;
-    } else {
-      console.warn("⚠️ Missing indicators");
-    }
+            // --- Chart 1: Close Price, MAs, and Buy/Sell Signals ---
+            const traceClose = {
+                x: dates, y: close,
+                name: "Close Price", type: 'scatter', mode: 'lines',
+                line: {color: '#3B82F6', width: 2} // Blue color for close price
+            };
+            const traceMA20 = {
+                x: dates, y: ma20,
+                name: "MA20", type: 'scatter', mode: 'lines',
+                line: {color: '#10B981', width: 1.5} // Green color for MA20
+            };
+            const traceMA30 = {
+                x: dates, y: ma30,
+                name: "MA30", type: 'scatter', mode: 'lines',
+                line: {color: '#EF4444', width: 1.5} // Red color for MA30
+            };
+            const traceBuy = {
+                x: buyX, y: buyY,
+                name: "Buy Signal", type: 'scatter', mode: 'markers',
+                marker: {
+                    color: '#10B981', // Green for buy
+                    size: 12,
+                    symbol: 'triangle-up',
+                    line: { width: 1, color: '#059669' }
+                }
+            };
+            const traceSell = {
+                x: sellX, y: sellY,
+                name: "Sell Signal", type: 'scatter', mode: 'markers',
+                marker: {
+                    color: '#EF4444', // Red for sell
+                    size: 12,
+                    symbol: 'triangle-down',
+                    line: { width: 1, color: '#DC2626' }
+                }
+            };
 
-    // Protimeter
-    const meter = document.getElementById('protimeter');
-    if (data.protimeter) {
-      const sentiment = data.protimeter.toLowerCase();
-      meter.textContent = `Sentiment: ${data.protimeter}`;
-      meter.className = `protimeter bg-${sentiment === 'bullish' ? 'success' : sentiment === 'bearish' ? 'danger' : 'warning'}`;
-    } else {
-      meter.textContent = 'Sentiment: N/A';
-      meter.className = 'protimeter bg-secondary';
-    }
-  })
-  .catch(error => {
-    console.error('❌ Error fetching data:', error);
-    alert("Unable to fetch data. Please try again later.");
-  });
-};
+            const chart1Layout = {
+                title: {
+                    text: "📈 Stock Close Price with Buy/Sell Signals and Moving Averages",
+                    font: { size: 24, color: '#333' }
+                },
+                xaxis: {
+                    title: "Date",
+                    showgrid: true,
+                    gridcolor: '#e0e0e0',
+                    tickfont: { size: 12 }
+                },
+                yaxis: {
+                    title: "Price",
+                    showgrid: true,
+                    gridcolor: '#e0e0e0',
+                    tickfont: { size: 12 }
+                },
+                legend: {
+                    orientation: "h",
+                    yanchor: "bottom",
+                    y: 1.02, // Position legend above the plot area
+                    xanchor: "right",
+                    x: 1,
+                    font: { size: 12 }
+                },
+                margin: { t: 80, b: 60, l: 60, r: 40 }, // Adjust margins for better spacing
+                hovermode: 'x unified', // Show all traces at a given x-coordinate on hover
+                height: 600,
+                responsive: true // Make chart responsive
+            };
 
-// Load companies dropdown
-fetch('/api/companies')
-  .then(res => res.json())
-  .then(companies => {
-    const select = document.getElementById('companySelect');
-    companies.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.symbol;
-      opt.textContent = `${c.name} (${c.symbol})`;
-      select.appendChild(opt);
+            Plotly.newPlot('chart1', [traceClose, traceMA20, traceMA30, traceBuy, traceSell], chart1Layout);
+
+            // --- Chart 2: Trading Signal Indicator ---
+            const traceSignalIndicator = {
+                x: dates,
+                y: signal,
+                name: "Signal",
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: '#8B5CF6', width: 2, shape: 'hv' }, // Purple line, horizontal-vertical steps
+                marker: { size: 8, color: '#8B5CF6' }
+            };
+
+            const chart2Layout = {
+                title: {
+                    text: "🚦 Trading Signal Indicator (1: Buy, 0: Hold, -1: Sell)",
+                    font: { size: 24, color: '#333' }
+                },
+                xaxis: {
+                    title: "Date",
+                    showgrid: true,
+                    gridcolor: '#e0e0e0',
+                    tickfont: { size: 12 }
+                },
+                yaxis: {
+                    title: "Signal",
+                    tickvals: [-1, 0, 1], // Explicit tick values for clarity
+                    ticktext: ['Sell', 'Hold', 'Buy'], // Custom labels for ticks
+                    range: [-1.5, 1.5], // Add some padding above and below ticks
+                    showgrid: true,
+                    gridcolor: '#e0e0e0',
+                    tickfont: { size: 12 }
+                },
+                margin: { t: 80, b: 60, l: 60, r: 40 },
+                hovermode: 'x unified',
+                height: 400,
+                responsive: true
+            };
+
+            Plotly.newPlot('chart2', [traceSignalIndicator], chart2Layout);
+        }
     });
-  });
+}
 
-document.getElementById('companySelect').addEventListener('change', e => {
-  const selectedOption = e.target.selectedOptions[0];
-  const companyName = selectedOption.textContent.split(' (')[0]; // Send "Infosys"
-  fetchData(companyName);
+// File upload handler
+document.getElementById('fileInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        // Use FileReader to read the file content as text
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            // Pass the file content (as string) to the plotting function
+            plotStockCharts(event.target.result);
+        };
+        reader.readAsText(file); // Read the file as text
+    }
 });
 
-document.querySelectorAll('.time-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const range = btn.getAttribute('data-range');
-    const company = document.getElementById('companySelect').value;
-    if (company) fetchData(company, range);
-  });
-});
-
-document.querySelectorAll('.finance-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.finance-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const financeType = btn.getAttribute('data-type');
-    const company = document.getElementById('companySelect').value;
-    if (company) fetchData(company, undefined, financeType);
-  });
-});
+// You can optionally add a default CSV here if you want a chart to show on load without user upload
+// For example:
+/*
+window.onload = function() {
+    const defaultCsvData = `Date,Open,High,Low,Close,Adj Close,Volume
+    2023-01-02,880.0,885.0,870.0,882.5,880.0,123456
+    ... (your default data here) ...
+    `;
+    plotStockCharts(defaultCsvData);
+};
+*/
 </script>
-
-<!-- 
-<script>
-const stockChartCtx = document.getElementById('stockChart').getContext('2d');
-const financeChartCtx = document.getElementById('financeChart').getContext('2d');
-let stockChart, financeChart;
-
-const renderChart = (labels, data) => {
-  if (stockChart) stockChart.destroy();
-  stockChart = new Chart(stockChartCtx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Close Price',
-        data,
-        borderColor: 'blue',
-        tension: 0.3,
-        fill: false
-      }]
-    }
-  });
-};
-
-const renderFinance = (labels, revenue, profit) => {
-  if (financeChart) financeChart.destroy();
-  financeChart = new Chart(financeChartCtx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Revenue', data: revenue, backgroundColor: 'green' },
-        { label: 'Net Profit', data: profit, backgroundColor: 'orange' }
-      ]
-    },
-    options: { responsive: true }
-  });
-};
-
-const updateIndicatorsTable = (indicators) => {
-  const table = document.getElementById('indicatorsTable');
-  if (!indicators || Object.keys(indicators).length === 0) {
-    table.innerHTML = `<tr><td colspan="4">No indicator data available</td></tr>`;
-    return;
-  }
-
-  const { RSI = '-', MACD = '-', Signal = '-', Volume = '-' } = indicators;
-  table.innerHTML = `
-    <thead>
-      <tr><th>RSI</th><th>MACD</th><th>Signal</th><th>Volume</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>${RSI}</td><td>${MACD}</td><td>${Signal}</td><td>${Volume}</td></tr>
-    </tbody>
-  `;
-};
-
-const updateProtimeter = (sentiment) => {
-  const meter = document.getElementById('protimeter');
-  if (!sentiment) {
-    meter.textContent = 'Sentiment: N/A';
-    meter.className = 'protimeter bg-secondary';
-    return;
-  }
-
-  const value = sentiment.toLowerCase();
-  meter.textContent = `Sentiment: ${sentiment}`;
-  meter.className = `protimeter bg-${value === 'bullish' ? 'success' : value === 'bearish' ? 'danger' : 'warning'}`;
-};
-
-const fetchData = (company, range = '1m', financeType = 'annual') => {
-  if (!company || company === "Choose...") {
-    alert("Please select a valid company");
-    return;
-  }
-
-  fetch('/api/data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ company, range, finance: financeType })
-  })
-    .then(res => {
-      if (!res.ok) throw new Error("Network error");
-      return res.json();
-    })
-    .then(data => {
-      console.log("✅ Received data:", data);
-
-      // Render Graph
-      if (data.graph && data.graph.dates && data.graph.close) {
-        renderChart(data.graph.dates, data.graph.close);
-      }
-
-      // Render Financials
-      if (data.financial && data.financial.labels && data.financial.revenue && data.financial.profit) {
-        renderFinance(data.financial.labels, data.financial.revenue, data.financial.profit);
-      }
-
-      // Render Indicators
-      updateIndicatorsTable(data.indicators);
-
-      // Update Protimeter
-      updateProtimeter(data.protimeter);
-    })
-    .catch(err => {
-      console.error("❌ Error fetching data:", err);
-      alert("Failed to fetch data. Please try again later.");
-    });
-};
-
-// Load company options
-fetch('/api/companies')
-  .then(res => res.json())
-  .then(companies => {
-    const select = document.getElementById('companySelect');
-    companies.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.symbol;
-      opt.textContent = `${c.name} (${c.symbol})`;
-      select.appendChild(opt);
-    });
-  });
-
-// Event: Company change
-document.getElementById('companySelect').addEventListener('change', e => {
-  const selectedText = e.target.selectedOptions[0].textContent;
-  const companyName = selectedText.split(' (')[0]; // eg: Infosys
-  fetchData(companyName);
-});
-
-// Event: Time range change
-document.querySelectorAll('.time-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const range = btn.getAttribute('data-range');
-    const company = document.getElementById('companySelect').value;
-    if (company) fetchData(company, range);
-  });
-});
-
-// Event: Finance type change
-document.querySelectorAll('.finance-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.finance-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const financeType = btn.getAttribute('data-type');
-    const company = document.getElementById('companySelect').value;
-    if (company) fetchData(company, undefined, financeType);
-  });
-});
-</script> -->
 
 </body>
 </html>

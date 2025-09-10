@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinBuddy CSV Analyzer</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f4f6f8;
+    }
+    .card {
+      border-radius: 16px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      margin-bottom: 24px;
+      background: white;
+      padding: 1.5rem;
+    }
+  </style>
+</head>
+<body class="p-4">
+<div class="container mx-auto max-w-7xl">
+  <h2 class="text-4xl font-extrabold text-center text-gray-800 mb-4">📊 FinBuddy CSV Analyzer</h2>
+  <p class="text-center text-gray-600 mb-6">
+    Upload your CSV file to analyze stock trends, visualize price with moving averages,<br>
+    and detect buy/sell signals with smart filter options.
+  </p>
+
+  <div class="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
+    <input type="file" id="fileInput" class="file:px-4 file:py-2 file:rounded-full file:bg-blue-100 file:text-blue-700 text-sm max-w-md w-full">
+    <select id="maDropdown" class="form-select w-auto rounded-lg border-gray-300 text-sm">
+      <option value="20-30">MA 20-30</option>
+      <option value="30-40">MA 30-40</option>
+      <option value="40-50">MA 40-50</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <h5 class="text-xl font-semibold mb-2">Price Chart with MA & Buy/Sell Signals</h5>
+    <div id="chart1" class="h-[600px] w-full"></div>
+  </div>
+
+  <div class="card">
+    <h5 class="text-xl font-semibold mb-2">Trading Signal Indicator</h5>
+    <div id="chart2" class="h-[400px] w-full"></div>
+  </div>
+</div>
+
+<script>
+let selectedMARange = [20, 30];
+
+function movingAverage(arr, window) {
+  const result = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (i < window - 1) {
+      result.push(null);
+    } else {
+      const slice = arr.slice(i - window + 1, i + 1);
+      const avg = slice.reduce((sum, val) => sum + val, 0) / window;
+      result.push(avg);
+    }
+  }
+  return result;
+}
+
+function plotStockCharts(csvString) {
+  Papa.parse(csvString, {
+    header: false,
+    complete: function(results) {
+      const data = results.data;
+      const dates = [], close = [];
+
+      data.forEach(row => {
+        if (row[0]) {
+          const datePart = row[0].split(' ')[0];
+          const [day, month, year] = datePart.split('-');
+          dates.push(new Date(`${year}-${month}-${day}`));
+        }
+        if (row[4] && !isNaN(parseFloat(row[4]))) {
+          close.push(parseFloat(row[4]));
+        }
+      });
+
+      const [maLow, maHigh] = selectedMARange;
+      const ma1 = movingAverage(close, maLow);
+      const ma2 = movingAverage(close, maHigh);
+
+      const signal = [];
+      for (let i = 0; i < close.length; i++) {
+        if (ma1[i] == null || ma2[i] == null) signal.push(0);
+        else if (ma1[i] > ma2[i]) signal.push(1);
+        else if (ma1[i] < ma2[i]) signal.push(-1);
+        else signal.push(0);
+      }
+
+      const position = [0];
+      for (let i = 1; i < signal.length; i++) {
+        position.push(signal[i] - signal[i-1]);
+      }
+
+      const buyX = [], buyY = [], sellX = [], sellY = [];
+      for (let i = 0; i < position.length; i++) {
+        if (position[i] === 1) {
+          buyX.push(dates[i]);
+          buyY.push(close[i]);
+        } else if (position[i] === -1) {
+          sellX.push(dates[i]);
+          sellY.push(close[i]);
+        }
+      }
+
+      const traceClose = {
+        x: dates, y: close, name: "Close Price", type: 'scatter', mode: 'lines',
+        line: {color: '#3B82F6', width: 2}
+      };
+      const traceMA1 = {
+        x: dates, y: ma1, name: `MA${maLow}`, type: 'scatter', mode: 'lines',
+        line: {color: '#10B981', width: 1.5, dash: 'dot'}
+      };
+      const traceMA2 = {
+        x: dates, y: ma2, name: `MA${maHigh}`, type: 'scatter', mode: 'lines',
+        line: {color: '#EF4444', width: 1.5, dash: 'dot'}
+      };
+      const traceBuy = {
+        x: buyX, y: buyY, name: "Buy Signal", type: 'scatter', mode: 'markers',
+        marker: { color: '#10B981', size: 12, symbol: 'triangle-up' }
+      };
+      const traceSell = {
+        x: sellX, y: sellY, name: "Sell Signal", type: 'scatter', mode: 'markers',
+        marker: { color: '#EF4444', size: 12, symbol: 'triangle-down' }
+      };
+
+      Plotly.newPlot('chart1', [traceClose, traceMA1, traceMA2, traceBuy, traceSell], {
+        title: `📈 Close Price with MA & Signals`,
+        hovermode: 'x unified', height: 600,
+        xaxis: { title: "Date" }, yaxis: { title: "Price" }
+      });
+
+      Plotly.newPlot('chart2', [{
+        x: dates, y: signal, name: "Signal", type: 'scatter', mode: 'lines+markers',
+        line: { color: '#8B5CF6', width: 2, shape: 'hv' }
+      }], {
+        title: `🚦 Signal Indicator (1: Buy, 0: Hold, -1: Sell)`,
+        yaxis: { tickvals: [-1, 0, 1], ticktext: ['Sell', 'Hold', 'Buy'], range: [-1.5, 1.5] },
+        hovermode: 'x unified', height: 400,
+        xaxis: { title: "Date" }
+      });
+    }
+  });
+}
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = e => plotStockCharts(e.target.result);
+    reader.readAsText(file);
+  }
+});
+
+document.getElementById('maDropdown').addEventListener('change', e => {
+  selectedMARange = e.target.value.split('-').map(Number);
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput.files.length > 0) {
+    const reader = new FileReader();
+    reader.onload = e => plotStockCharts(e.target.result);
+    reader.readAsText(fileInput.files[0]);
+  }
+});
+</script>
+</body>
+</html>

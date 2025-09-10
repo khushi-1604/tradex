@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MA Crossover Trading</title>
+  <link rel="stylesheet" href="style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>MA20 / MA30 Crossover Simulator</h1>
+  <input type="file" id="csvFile" accept=".csv" />
+  <br><br>
+  <label>Start Date: <input type="date" id="startDate"></label>
+  <label>End Date: <input type="date" id="endDate"></label>
+  <button onclick="runSimulation()">Run Simulation</button>
+
+  <div id="results">
+    <h2>Transaction Log</h2>
+    <table id="transactionTable">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Action</th>
+          <th>Price</th>
+          <th>Qty</th>
+          <th>Invest</th>
+          <th>Gain/Loss</th>
+          <th>Principal</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h2>Chart</h2>
+    <canvas id="priceChart" height="100"></canvas>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
